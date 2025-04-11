@@ -72,8 +72,9 @@ async def save_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id == OWNER_ID:
-        await update.message.reply_text(f"📊 Bot Usage Stats:
-Start button pressed: {stats['start']}")
+        await update.message.reply_text(
+            f"📊 Bot Usage Stats:\nStart button pressed: {stats['start']}"
+        )
     else:
         await update.message.reply_text("Sorry, stats are for the bot owner only.")
 
