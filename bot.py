@@ -1,96 +1,80 @@
 
-import os
+import logging
 import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-OWNER_ID = 6956680309
+TOKEN = "8056412048:AAGGX8NsW5c1DbkpnsmpGYh0XeQdLl0dSs8"
+ADMIN_ID = 6956680309
 CHANNEL_LINK = "https://t.me/+Zwx3Y0CHp_RmYzEy"
 
-photo_messages = []
-video_messages = []
-stats = {"start": 0}
+photo_posts = []
+video_posts = []
+start_clicks = 0
 
-photo_captions = [
-    "Here's a lovely moment 🌸 — but wait till you see the video! 🎥",
-    "This pic is cute, but videos? They’re next level 😍 Tap that button!",
-    "A picture says a lot, but a video... well, it shows everything 😉"
-]
-
-video_captions = [
-    "Wish I could send the full video here... but Telegram has limits! 😢",
-    "This is just a teaser — the full content is waiting on the channel 👀",
-    "Can't fit all the fun here — check out the full thing on our channel! 🎬"
-]
-
+# Клавиатура выбора
 def main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📸 Photo", callback_data="photo")],
-        [InlineKeyboardButton("🎞️ Video", callback_data="video")]
+        [InlineKeyboardButton("🎥 Video", callback_data="video")]
     ])
 
+# /start команда
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stats["start"] += 1
-    await update.message.reply_text(
-        "Hey there! Ready to see something adorable and fun? 💖",
-        reply_markup=main_keyboard()
-    )
+    global start_clicks
+    start_clicks += 1
+    with open("start.jpg", "rb") as photo:
+        await context.bot.send_photo(
+            chat_id=update.effective_chat.id,
+            photo=photo,
+            caption="Hey cutie! Ready to explore something fun and sweet? 💖 Choose what you’d love to see first 👇",
+            reply_markup=main_keyboard()
+        )
 
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Обработка кнопок
+async def handle_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "photo":
-        if photo_messages:
-            msg_id = random.choice(photo_messages)
-            caption = random.choice(photo_captions)
-            await context.bot.copy_message(chat_id=query.message.chat_id, from_chat_id=OWNER_ID, message_id=msg_id, caption=caption)
-        else:
-            await query.message.reply_text("No photos uploaded yet 😢")
-        await query.message.reply_text("What would you like next?", reply_markup=main_keyboard())
+    if query.data == "photo" and photo_posts:
+        msg_id = random.choice(photo_posts)
+        await context.bot.forward_message(chat_id=query.message.chat.id, from_chat_id=ADMIN_ID, message_id=msg_id)
+        await query.message.reply_text("Aww~ isn't it lovely? Wanna peek at a video next? 😚", reply_markup=main_keyboard())
 
-    elif query.data == "video":
-        if video_messages:
-            msg_id = random.choice(video_messages)
-            caption = random.choice(video_captions)
-            await context.bot.copy_message(chat_id=query.message.chat_id, from_chat_id=OWNER_ID, message_id=msg_id, caption=caption)
-        else:
-            await query.message.reply_text("No videos uploaded yet 😢")
-        await query.message.reply_text(f"Watch more on our channel 👉 {CHANNEL_LINK}")
-
-async def save_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.forward_from_chat and update.message.from_user.id == OWNER_ID:
-        msg = update.message
-        if msg.video:
-            video_messages.append(msg.message_id)
-            await msg.reply_text("🎞️ Video saved.")
-        elif msg.photo:
-            photo_messages.append(msg.message_id)
-            await msg.reply_text("📸 Photo saved.")
-        else:
-            await msg.reply_text("Only photos and videos are supported.")
-
-async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id == OWNER_ID:
-        await update.message.reply_text(
-            f"📊 Bot Usage Stats:\nStart button pressed: {stats['start']}"
+    elif query.data == "video" and video_posts:
+        msg_id = random.choice(video_posts)
+        await context.bot.forward_message(chat_id=query.message.chat.id, from_chat_id=ADMIN_ID, message_id=msg_id)
+        await query.message.reply_text(
+            f"Hehe, that was just a little teaser 😳\nYou can see the full magic on the channel 👉 {CHANNEL_LINK}\n\nWanna peek at something else? 💕",
+            reply_markup=main_keyboard()
         )
-    else:
-        await update.message.reply_text("Sorry, stats are for the bot owner only.")
 
-def main():
-    TOKEN = os.environ.get("TOKEN")
-    if not TOKEN:
-        raise ValueError("Missing TOKEN environment variable")
+# Сохраняем новый контент
+async def save_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    if update.message.video:
+        video_posts.append(update.message.message_id)
+        await update.message.reply_text("🎞️ Video saved.")
+    elif update.message.photo:
+        photo_posts.append(update.message.message_id)
+        await update.message.reply_text("📸 Photo saved.")
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stats", stats_handler))
-    app.add_handler(CallbackQueryHandler(handle_buttons))
-    app.add_handler(MessageHandler(filters.FORWARDED, save_forward))
+# Статистика
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("Access denied.")
+        return
+    await update.message.reply_text(f"📊 Bot Usage Stats:\nStart clicks: {start_clicks}\nPhotos: {len(photo_posts)}\nVideos: {len(video_posts)}")
 
-    app.run_polling()
+# Логгирование
+logging.basicConfig(level=logging.INFO)
 
-if __name__ == '__main__':
-    main()
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("stats", stats))
+app.add_handler(CallbackQueryHandler(handle_choice))
+app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, save_post))
+
+app.run_polling()
